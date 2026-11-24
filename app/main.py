@@ -1,6 +1,6 @@
 import logging
 from fastapi import FastAPI, HTTPException, Request, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 import uvicorn
@@ -41,7 +41,6 @@ app.add_middleware(
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     raw_errors = exc.errors()
-    # Format cleanly for JSON serialization without non-serializable exception objects
     serializable_errors = []
     for err in raw_errors:
         serializable_errors.append({
@@ -75,8 +74,10 @@ async def general_exception_handler(request: Request, exc: Exception):
     )
 
 
-@app.get("/", tags=["General"])
-async def root():
+@app.api_route("/", methods=["GET", "HEAD"], tags=["General"])
+async def root(request: Request):
+    if request.method == "HEAD":
+        return Response(status_code=status.HTTP_200_OK)
     return {
         "name": settings.APP_NAME,
         "version": settings.APP_VERSION,
@@ -89,14 +90,27 @@ async def root():
     }
 
 
-@app.get("/health", tags=["General"])
-async def health_check():
+@app.api_route("/health", methods=["GET", "HEAD"], tags=["General"])
+async def health_check(request: Request):
+    if request.method == "HEAD":
+        return Response(status_code=status.HTTP_200_OK)
     return {
         "status": "UP",
         "environment": settings.APP_ENV,
         "llm_provider": settings.LLM_PROVIDER,
         "search_provider": settings.SEARCH_PROVIDER
     }
+
+
+@app.get("/doc", include_in_schema=False)
+async def redirect_doc_to_docs():
+    """Convenient redirect for users typing /doc instead of /docs."""
+    return RedirectResponse(url="/docs", status_code=status.HTTP_301_MOVED_PERMANENTLY)
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @app.post(

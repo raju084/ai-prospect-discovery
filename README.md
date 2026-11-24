@@ -6,6 +6,12 @@
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg?logo=docker&logoColor=white)](https://www.docker.com)
 [![Pytest](https://img.shields.io/badge/Tests-21%20Passed%20(100%25)-brightgreen.svg?logo=pytest&logoColor=white)](https://pytest.org)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Render-46E3B7.svg?logo=render&logoColor=white)](https://ai-prospect-discovery-1-brgo.onrender.com)
+[![Swagger Docs](https://img.shields.io/badge/Swagger%20Docs-Available-brightgreen.svg?logo=swagger&logoColor=white)](https://ai-prospect-discovery-1-brgo.onrender.com/docs)
+
+> 🚀 **Live Demo URL**: [https://ai-prospect-discovery-1-brgo.onrender.com](https://ai-prospect-discovery-1-brgo.onrender.com)  
+> 📖 **Interactive API Documentation (Swagger)**: [https://ai-prospect-discovery-1-brgo.onrender.com/docs](https://ai-prospect-discovery-1-brgo.onrender.com/docs)  
+> 🔍 **Endpoint**: `POST https://ai-prospect-discovery-1-brgo.onrender.com/prospect-discovery`
 
 A production-ready **FastAPI** service that discovers relevant prospects across multiple online platforms from natural-language search queries. The engine extracts search intent, targets geographical and interest entities, scans supported social platforms, consolidates cross-platform profiles belonging to the same individual, extracts verified public contact details (Email, Phone, WhatsApp), and returns a clean, structured JSON response.
 
