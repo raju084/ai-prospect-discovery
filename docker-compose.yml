@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  prospect-discovery-api:
+    build: .
+    container_name: prospect_discovery_api
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      - APP_PORT=4000
+      - APP_HOST=0.0.0.0
+      - APP_ENV=production
+      - DEBUG=False
+      - LLM_PROVIDER=gemini
+      - LLM_MODEL=gemini-1.5-flash
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - SEARCH_PROVIDER=ddg
+    env_file:
+      - .env
