@@ -252,7 +252,7 @@ All 5 mandatory test queries have been validated and tested against the API:
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/your-username/ai-prospect-discovery.git
+git clone https://github.com/raju084/ai-prospect-discovery.git
 cd ai-prospect-discovery
 ```
 
