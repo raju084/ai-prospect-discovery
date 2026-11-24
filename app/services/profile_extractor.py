@@ -1,8 +1,8 @@
 import re
-from typing import List, Dict, Any, Optional
+from typing import List
 from app.schemas import PlatformProfile
 from app.utils.validators import is_valid_email, is_valid_phone, EMAIL_REGEX, PHONE_REGEX
-from app.utils.normalizers import normalize_name, normalize_url, normalize_whatsapp_link
+from app.utils.normalizers import normalize_whatsapp_link
 
 
 class ProfileExtractor:

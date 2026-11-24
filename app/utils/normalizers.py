@@ -5,7 +5,8 @@ from typing import Optional
 
 # Regex to strip platform suffixes and noise from title strings
 TITLE_CLEANUP_REGEX = re.compile(
-    r"\s*(?:[\|\-\–\—\•]\s*|\bon\s+)(LinkedIn|Facebook|Instagram|Twitter|X|YouTube|Threads|WhatsApp|TikTok|Pinterest|Official|Profile|Channel|Bio).*$",
+    r"\s*(?:[\|\-\–\—\•]\s*|\bon\s+)"
+    r"(LinkedIn|Facebook|Instagram|Twitter|X|YouTube|Threads|WhatsApp|TikTok|Pinterest|Official|Profile|Channel|Bio).*$",
     re.IGNORECASE
 )
 
@@ -107,13 +108,18 @@ def normalize_whatsapp_link(raw_contact: str) -> Optional[str]:
 
 
 def normalize_location(city: Optional[str] = None, state: Optional[str] = None, country: Optional[str] = None) -> str:
-    """Format geographical entities consistently as 'City, State, Country'."""
+    """Format geographical entities consistently as 'City, Country' or 'City, State, Country'."""
     elements = []
-    if city and city.strip():
-        elements.append(city.strip().title())
-    if state and state.strip():
-        elements.append(state.strip().title())
-    if country and country.strip():
-        elements.append(country.strip().upper() if len(country.strip()) <= 3 else country.strip().title())
+    c_str = city.strip().title() if city and city.strip() else ""
+    s_str = state.strip().title() if state and state.strip() else ""
+    co_str = country.strip().upper() if country and len(country.strip()) <= 3 else (country.strip().title() if country else "")
+
+    if c_str:
+        elements.append(c_str)
+    # Only append state if distinct from city and not redundant District of Columbia for DC
+    if s_str and s_str.lower() not in ("district of columbia", c_str.lower()):
+        elements.append(s_str)
+    if co_str:
+        elements.append(co_str)
 
     return ", ".join(elements)

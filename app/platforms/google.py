@@ -2,7 +2,6 @@ from typing import List
 from app.platforms.base import BasePlatform
 from app.schemas import PlatformProfile, QueryIntent
 from app.services.search_service import search_service
-from app.utils.validators import is_valid_platform_profile_url
 from app.utils.normalizers import normalize_name, normalize_url
 
 
@@ -15,7 +14,10 @@ class GooglePlatform(BasePlatform):
 
     async def discover(self, search_query: str, intent: QueryIntent) -> List[PlatformProfile]:
         # Google search for publicly indexed profiles and personal websites
-        query = f'"{intent.interest}" "{intent.audience}" "{intent.location.to_formatted_string()}" profile OR portfolio OR about'
+        query = (
+            f'"{intent.interest}" "{intent.audience}" '
+            f'"{intent.location.to_formatted_string()}" profile OR portfolio OR about'
+        )
         results = await search_service.search(query, platform_filter=None, max_results=5)
 
         profiles = []

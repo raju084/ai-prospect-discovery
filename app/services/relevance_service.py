@@ -3,7 +3,6 @@ import re
 from typing import List
 from app.schemas import PlatformProfile, QueryIntent
 from app.config import settings
-from app.services.llm_service import llm_service
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +65,6 @@ class RelevanceService:
             matches = sum(1 for c in loc_components if c in text)
             score += 0.30 * (matches / len(loc_components))
         else:
-            # If no location specified in query, grant full location credit
             score += 0.30
 
         return min(1.0, score)

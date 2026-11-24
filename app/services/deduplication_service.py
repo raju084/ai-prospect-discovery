@@ -1,9 +1,9 @@
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Optional
 from difflib import SequenceMatcher
 from app.schemas import PlatformProfile, ProspectItem, SocialLinkItem
 from app.utils.validators import is_valid_url
-from app.utils.normalizers import normalize_name, normalize_url, normalize_whatsapp_link
+from app.utils.normalizers import normalize_name, normalize_url
 
 logger = logging.getLogger(__name__)
 

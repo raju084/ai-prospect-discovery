@@ -1,10 +1,15 @@
-from pydantic import BaseModel, Field, field_validator
+import re
 from typing import List, Optional, Dict, Any
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 
 
 class ProspectDiscoveryRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
     query: str = Field(
         ...,
+        min_length=3,
+        max_length=500,
         description="Natural-language prospect discovery query",
         examples=["Football lovers in Washington DC in USA"],
     )
@@ -17,13 +22,19 @@ class ProspectDiscoveryRequest(BaseModel):
             raise ValueError("Query string cannot be empty or whitespace only.")
         if len(clean) < 3:
             raise ValueError("Query string must be at least 3 characters long.")
+        if len(clean) > 500:
+            raise ValueError("Query string cannot exceed 500 characters.")
+        # Strip potential control characters to prevent prompt injection and logging exploits
+        clean = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", clean)
         return clean
 
 
 class SocialLinkItem(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
     platform: str = Field(
         ...,
-        description="Platform name (LinkedIn, X, YouTube, Instagram, WhatsApp, Facebook, Email, Threads, etc.)",
+        description="Platform name (LinkedIn, X, YouTube, Instagram, WhatsApp, Facebook, Email, Threads)",
         examples=["LinkedIn"],
     )
     link: str = Field(
@@ -34,6 +45,8 @@ class SocialLinkItem(BaseModel):
 
 
 class ProspectItem(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
     name: str = Field(
         ...,
         description="Prospect full name or business entity name",
@@ -58,16 +71,24 @@ class ProspectDiscoveryResponse(BaseModel):
 
 
 class LocationDetails(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
     city: Optional[str] = None
     state: Optional[str] = None
     country: Optional[str] = None
 
     def to_formatted_string(self) -> str:
+        # If city and country exist and state is redundant (e.g. Washington DC), format as 'City, Country'
+        if self.city and self.country:
+            if not self.state or self.state.lower() in ("district of columbia", self.city.lower()):
+                return f"{self.city}, {self.country}"
         parts = [p for p in [self.city, self.state, self.country] if p]
         return ", ".join(parts) if parts else ""
 
 
 class QueryIntent(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
     interest: str = Field(..., description="Target interest, hobby, or domain")
     audience: str = Field(..., description="Target persona or audience title")
     location: LocationDetails = Field(default_factory=LocationDetails, description="Geographical parameters")

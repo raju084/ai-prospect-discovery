@@ -1,10 +1,9 @@
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from typing import List
 import re
 from app.schemas import PlatformProfile, QueryIntent
-from app.services.search_service import search_service
-from app.utils.validators import is_valid_platform_profile_url, is_valid_email, is_valid_phone, EMAIL_REGEX, PHONE_REGEX
-from app.utils.normalizers import normalize_name, normalize_url, normalize_whatsapp_link
+from app.utils.validators import is_valid_email, is_valid_phone, EMAIL_REGEX, PHONE_REGEX
+from app.utils.normalizers import normalize_whatsapp_link
 
 
 class BasePlatform(ABC):
@@ -40,8 +39,11 @@ class BasePlatform(ABC):
             if is_valid_phone(ph) and ph not in contacts["phones"]:
                 contacts["phones"].append(ph.strip())
 
-        # WhatsApp
-        wa_matches = re.findall(r"(?:https?://wa\.me/\d+|https?://api\.whatsapp\.com/send\?phone=\d+|chat\.whatsapp\.com/[a-zA-Z0-9]+)", text)
+        # WhatsApp patterns
+        wa_pattern = (
+            r"(?:https?://wa\.me/\d+|https?://api\.whatsapp\.com/send\?phone=\d+|chat\.whatsapp\.com/[a-zA-Z0-9]+)"
+        )
+        wa_matches = re.findall(wa_pattern, text)
         for wa in wa_matches:
             normalized_wa = normalize_whatsapp_link(wa)
             if normalized_wa and normalized_wa not in contacts["whatsapp_links"]:

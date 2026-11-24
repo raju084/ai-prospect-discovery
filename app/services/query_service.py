@@ -1,6 +1,5 @@
 import re
 import logging
-from typing import Dict, Any, List
 from app.schemas import QueryIntent, LocationDetails
 from app.services.llm_service import llm_service
 
@@ -56,43 +55,16 @@ class QueryService:
         """
         Parses query using LLM if available, otherwise executes deterministic NLP extraction.
         """
-        prompt = f"""
-You are an AI Prospect Discovery parameter extractor.
-Analyze the following natural-language search query:
-"{query}"
-
-Extract:
-1. interest: The primary interest, topic, industry, or activity (e.g., "Football", "Digital marketing", "Startups", "Cricket", "Restaurants")
-2. audience: The target persona or audience group (e.g., "Football lovers", "Marketing business owners", "Startup founders", "Cricket enthusiasts", "Restaurant owners")
-3. location: Object with "city", "state", and "country"
-4. target_type: "individual" or "business"
-
-Example 1: "Football lovers in Washington DC in USA"
-{{
-  "interest": "Football",
-  "audience": "Football lovers",
-  "location": {{
-    "city": "Washington DC",
-    "state": "District of Columbia",
-    "country": "USA"
-  }},
-  "target_type": "individual"
-}}
-
-Example 2: "Digital marketing agency owners in New York USA"
-{{
-  "interest": "Digital marketing",
-  "audience": "Digital marketing agency owners",
-  "location": {{
-    "city": "New York",
-    "state": "New York",
-    "country": "USA"
-  }},
-  "target_type": "business"
-}}
-
-Output strictly valid JSON with keys: interest, audience, location (city, state, country), target_type.
-"""
+        prompt = (
+            f'You are an AI Prospect Discovery parameter extractor.\n'
+            f'Analyze the following natural-language search query:\n"{query}"\n\n'
+            f'Extract:\n'
+            f'1. interest: Primary topic or domain (e.g. "Football", "Digital marketing", "Startups", "Cricket")\n'
+            f'2. audience: Target persona (e.g. "Football lovers", "Digital marketing agency owners", "Startup founders")\n'
+            f'3. location: Object with "city", "state", and "country"\n'
+            f'4. target_type: "individual" or "business"\n\n'
+            f'Output strictly valid JSON with keys: interest, audience, location (city, state, country), target_type.'
+        )
         system_instruction = "You are an expert NLP assistant that extracts prospect parameters into JSON."
         llm_response = await llm_service.generate_json(prompt, system_instruction)
 
@@ -153,7 +125,8 @@ Output strictly valid JSON with keys: interest, audience, location (city, state,
 
         # Interest extraction
         interest = audience_raw
-        for suffix in ["lovers", "fans", "enthusiasts", "owners", "agency owners", "founders", "professionals", "players"]:
+        suffixes = ["lovers", "fans", "enthusiasts", "owners", "agency owners", "founders", "professionals", "players"]
+        for suffix in suffixes:
             match = re.search(rf"^(.*?)\s+{suffix}", audience_raw, re.IGNORECASE)
             if match:
                 interest = match.group(1).strip()
@@ -172,7 +145,7 @@ Output strictly valid JSON with keys: interest, audience, location (city, state,
             target_type=target_type
         )
 
-    def generate_platform_queries(self, intent: QueryIntent) -> Dict[str, str]:
+    def generate_platform_queries(self, intent: QueryIntent) -> dict:
         """
         Generates platform-specific search dorks optimized for each social platform.
         """
@@ -180,20 +153,27 @@ Output strictly valid JSON with keys: interest, audience, location (city, state,
         interest = intent.interest
         audience = intent.audience
 
-        # Base terms
-        terms = f'"{interest}"'
-        if loc_str:
-            terms += f' "{loc_str}"'
+        # Format location dork clause
+        loc_clause = f'"{loc_str}"' if loc_str else ""
+        interest_clause = f'"{interest}"'
+
+        def build_dork(site_prefix: str, extra_flag: str = "") -> str:
+            terms = f"{site_prefix} {interest_clause}"
+            if loc_clause:
+                terms += f" {loc_clause}"
+            if extra_flag:
+                terms += f" {extra_flag}"
+            return terms.strip()
 
         return {
-            "google": f'{audience} {loc_str} profile OR contact',
-            "linkedin": f'site:linkedin.com/in/ "{interest}" "{loc_str}"' if loc_str else f'site:linkedin.com/in/ "{audience}"',
-            "x": f'(site:x.com OR site:twitter.com) "{interest}" "{loc_str}" -inurl:status' if loc_str else f'(site:x.com OR site:twitter.com) "{audience}" -inurl:status',
-            "youtube": f'site:youtube.com/@ "{interest}" "{loc_str}"' if loc_str else f'site:youtube.com/@ "{audience}"',
-            "instagram": f'site:instagram.com "{interest}" "{loc_str}" -inurl:explore' if loc_str else f'site:instagram.com "{audience}" -inurl:explore',
-            "facebook": f'site:facebook.com "{interest}" "{loc_str}"' if loc_str else f'site:facebook.com "{audience}"',
-            "threads": f'site:threads.net/@ "{interest}" "{loc_str}"' if loc_str else f'site:threads.net/@ "{audience}"',
-            "whatsapp": f'("wa.me/" OR "chat.whatsapp.com") "{interest}" "{loc_str}"' if loc_str else f'("wa.me/" OR "chat.whatsapp.com") "{audience}"',
+            "google": f'{audience} {loc_str} profile OR contact'.strip(),
+            "linkedin": build_dork("site:linkedin.com/in/"),
+            "x": build_dork("(site:x.com OR site:twitter.com)", "-inurl:status"),
+            "youtube": build_dork("site:youtube.com/@"),
+            "instagram": build_dork("site:instagram.com", "-inurl:explore"),
+            "facebook": build_dork("site:facebook.com"),
+            "threads": build_dork("site:threads.net/@"),
+            "whatsapp": build_dork('("wa.me/" OR "chat.whatsapp.com")'),
         }
 
 

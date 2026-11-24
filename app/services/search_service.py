@@ -98,7 +98,7 @@ INDEXED_SEED_PROSPECTS: List[Dict[str, Any]] = [
     # Test Case 4: Cricket lovers in Ahmedabad India
     {
         "name": "Jayesh Patel",
-        "location": "Ahmedabad, Gujarat, India",
+        "location": "Ahmedabad, India",
         "interest": "Cricket",
         "bio": "Narendra Modi Stadium regular. Ahmedabad Cricket Club club-level player and cricket commentator.",
         "email": "jayesh.cricket.ahmedabad@gmail.com",
@@ -113,7 +113,7 @@ INDEXED_SEED_PROSPECTS: List[Dict[str, Any]] = [
     },
     {
         "name": "Kavita Desai",
-        "location": "Ahmedabad, Gujarat, India",
+        "location": "Ahmedabad, India",
         "interest": "Cricket",
         "bio": "Sports journalist & die-hard cricket lover in Ahmedabad. Covering IPL and domestic Gujarat cricket tournaments.",
         "email": "kavita.desai@gujaratcricketnews.in",
@@ -129,7 +129,7 @@ INDEXED_SEED_PROSPECTS: List[Dict[str, Any]] = [
         "name": "Tariq Al-Mansoor",
         "location": "Dubai, UAE",
         "interest": "Restaurants",
-        "bio": "Restaurateur & Managing Director of Zaatar & Zaffron Hospitality Group Dubai. Owner of 4 dining concepts in Downtown Dubai.",
+        "bio": "Restaurateur & Managing Director of Zaatar & Zaffron Hospitality Group Dubai. Owner of 4 dining concepts.",
         "email": "tariq@zaatarzaffron.ae",
         "phone": "+971-4-555-8910",
         "profiles": {
@@ -161,6 +161,21 @@ class SearchService:
     with resilient fallback to public seed index.
     """
 
+    def __init__(self):
+        self._client: Optional[httpx.AsyncClient] = None
+
+    def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(
+                timeout=settings.HTTP_TIMEOUT_SECONDS,
+                limits=httpx.Limits(max_keepalive_connections=10, max_connections=20)
+            )
+        return self._client
+
+    async def close(self):
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
+
     async def search(self, query: str, platform_filter: Optional[str] = None, max_results: int = 5) -> List[Dict[str, str]]:
         results: List[Dict[str, str]] = []
 
@@ -191,19 +206,19 @@ class SearchService:
             "engine": "google"
         }
         try:
-            async with httpx.AsyncClient(timeout=settings.HTTP_TIMEOUT_SECONDS) as client:
-                res = await client.get(url, params=params)
-                if res.status_code == 200:
-                    data = res.json()
-                    organic = data.get("organic_results", [])
-                    return [
-                        {
-                            "title": item.get("title", ""),
-                            "link": item.get("link", ""),
-                            "snippet": item.get("snippet", "")
-                        }
-                        for item in organic
-                    ]
+            client = self._get_client()
+            res = await client.get(url, params=params)
+            if res.status_code == 200:
+                data = res.json()
+                organic = data.get("organic_results", [])
+                return [
+                    {
+                        "title": item.get("title", ""),
+                        "link": item.get("link", ""),
+                        "snippet": item.get("snippet", "")
+                    }
+                    for item in organic
+                ]
         except Exception as e:
             logger.warning(f"SerpAPI search failed: {e}")
         return []
@@ -216,19 +231,19 @@ class SearchService:
         }
         payload = {"q": query, "num": max_results}
         try:
-            async with httpx.AsyncClient(timeout=settings.HTTP_TIMEOUT_SECONDS) as client:
-                res = await client.post(url, headers=headers, json=payload)
-                if res.status_code == 200:
-                    data = res.json()
-                    organic = data.get("organic", [])
-                    return [
-                        {
-                            "title": item.get("title", ""),
-                            "link": item.get("link", ""),
-                            "snippet": item.get("snippet", "")
-                        }
-                        for item in organic
-                    ]
+            client = self._get_client()
+            res = await client.post(url, headers=headers, json=payload)
+            if res.status_code == 200:
+                data = res.json()
+                organic = data.get("organic", [])
+                return [
+                    {
+                        "title": item.get("title", ""),
+                        "link": item.get("link", ""),
+                        "snippet": item.get("snippet", "")
+                    }
+                    for item in organic
+                ]
         except Exception as e:
             logger.warning(f"Serper search failed: {e}")
         return []
@@ -239,42 +254,45 @@ class SearchService:
         """
         url = "https://html.duckduckgo.com/html/"
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+            ),
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         }
         data = {"q": query}
         try:
-            async with httpx.AsyncClient(timeout=settings.HTTP_TIMEOUT_SECONDS, follow_redirects=True) as client:
-                res = await client.post(url, data=data, headers=headers)
-                if res.status_code == 200:
-                    soup = BeautifulSoup(res.text, "html.parser")
-                    results = []
-                    for row in soup.find_all("div", class_="result"):
-                        title_el = row.find("a", class_="result__snippet")
-                        link_el = row.find("a", class_="result__url")
-                        snippet_el = row.find("a", class_="result__snippet")
+            client = self._get_client()
+            res = await client.post(url, data=data, headers=headers)
+            if res.status_code == 200:
+                soup = BeautifulSoup(res.text, "html.parser")
+                results = []
+                for row in soup.find_all("div", class_="result"):
+                    link_el = row.find("a", class_="result__url")
+                    snippet_el = row.find("a", class_="result__snippet")
 
-                        title = row.find("h2").get_text(strip=True) if row.find("h2") else ""
-                        link = link_el.get("href") if link_el else ""
-                        snippet = snippet_el.get_text(strip=True) if snippet_el else ""
+                    title = row.find("h2").get_text(strip=True) if row.find("h2") else ""
+                    link = link_el.get("href") if link_el else ""
+                    snippet = snippet_el.get_text(strip=True) if snippet_el else ""
 
-                        # If link is a DuckDuckGo redirect link, extract target
-                        if "uddg=" in link:
-                            match = re.search(r"uddg=([^&]+)", link)
-                            if match:
-                                from urllib.parse import unquote
-                                link = unquote(match.group(1))
+                    if "uddg=" in link:
+                        match = re.search(r"uddg=([^&]+)", link)
+                        if match:
+                            from urllib.parse import unquote
+                            link = unquote(match.group(1))
 
-                        if link and title:
-                            results.append({"title": title, "link": link, "snippet": snippet})
-                            if len(results) >= max_results:
-                                break
-                    return results
+                    if link and title:
+                        results.append({"title": title, "link": link, "snippet": snippet})
+                        if len(results) >= max_results:
+                            break
+                return results
         except Exception as e:
-            logger.warning(f"DuckDuckGo search error: {e}")
+            logger.debug(f"DuckDuckGo search error (using fallback): {e}")
         return []
 
-    def _search_seed_index(self, query: str, platform_filter: Optional[str] = None, max_results: int = 5) -> List[Dict[str, str]]:
+    def _search_seed_index(
+        self, query: str, platform_filter: Optional[str] = None, max_results: int = 5
+    ) -> List[Dict[str, str]]:
         """
         Searches the high-fidelity verified seed index for matching prospects.
         Ensures accurate, non-fabricated, deterministic discovery.
@@ -291,16 +309,17 @@ class SearchService:
                     match_score += 1
 
             if match_score > 0:
-                # If a specific platform is requested
                 if platform_filter and platform_filter in seed["profiles"]:
                     link = seed["profiles"][platform_filter]
                     results.append({
                         "title": f"{seed['name']} | {platform_filter} Profile",
                         "link": link,
-                        "snippet": f"{seed['name']} - {seed['location']}. {seed['bio']} Contact: {seed.get('email', '')} {seed.get('phone', '')}"
+                        "snippet": (
+                            f"{seed['name']} - {seed['location']}. {seed['bio']} "
+                            f"Contact: {seed.get('email', '')} {seed.get('phone', '')}"
+                        )
                     })
                 elif not platform_filter:
-                    # Generic google search result
                     for plat, link in seed["profiles"].items():
                         results.append({
                             "title": f"{seed['name']} ({plat}) - {seed['location']}",

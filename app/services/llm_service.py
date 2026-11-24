@@ -19,6 +19,19 @@ class LLMService:
     def __init__(self):
         self._cache: Dict[str, Dict[str, Any]] = {}
         self._cache_ttl = settings.CACHE_TTL_SECONDS
+        self._client: Optional[httpx.AsyncClient] = None
+
+    def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(
+                timeout=settings.HTTP_TIMEOUT_SECONDS,
+                limits=httpx.Limits(max_keepalive_connections=10, max_connections=20)
+            )
+        return self._client
+
+    async def close(self):
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
 
     def _get_from_cache(self, key: str) -> Optional[Dict[str, Any]]:
         cached = self._cache.get(key)
@@ -31,7 +44,6 @@ class LLMService:
 
     def _set_cache(self, key: str, data: Dict[str, Any]) -> None:
         if len(self._cache) > 1000:
-            # Evict oldest entry
             oldest_key = min(self._cache.keys(), key=lambda k: self._cache[k]["timestamp"])
             del self._cache[oldest_key]
         self._cache[key] = {"data": data, "timestamp": time.time()}
@@ -46,7 +58,6 @@ class LLMService:
         if cached:
             return cached
 
-        # Check configured provider
         provider = settings.LLM_PROVIDER.lower()
         result = None
 
@@ -59,7 +70,7 @@ class LLMService:
         elif provider == "groq" and settings.GROQ_API_KEY:
             result = await self._call_groq(prompt, system_instruction)
 
-        # If primary provider is unavailable or failed, try available keys
+        # Fallback to alternative keys if primary failed or was not configured
         if not result:
             if settings.GEMINI_API_KEY and provider != "gemini":
                 result = await self._call_gemini(prompt, system_instruction)
@@ -75,7 +86,12 @@ class LLMService:
 
     async def _call_gemini(self, prompt: str, system_instruction: str) -> Optional[Dict[str, Any]]:
         model = settings.LLM_MODEL if "gemini" in settings.LLM_MODEL else "gemini-1.5-flash"
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.GEMINI_API_KEY}"
+        # API key passed securely in x-goog-api-key header instead of URL query string
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        headers = {
+            "x-goog-api-key": settings.GEMINI_API_KEY,
+            "Content-Type": "application/json"
+        }
         payload = {
             "contents": [
                 {
@@ -90,16 +106,16 @@ class LLMService:
             }
         }
         try:
-            async with httpx.AsyncClient(timeout=settings.HTTP_TIMEOUT_SECONDS) as client:
-                res = await client.post(url, json=payload)
-                if res.status_code == 200:
-                    data = res.json()
-                    candidates = data.get("candidates", [])
-                    if candidates:
-                        text = candidates[0]["content"]["parts"][0]["text"]
-                        return self._clean_and_parse_json(text)
-                else:
-                    logger.warning(f"Gemini API returned status {res.status_code}: {res.text}")
+            client = self._get_client()
+            res = await client.post(url, json=payload, headers=headers)
+            if res.status_code == 200:
+                data = res.json()
+                candidates = data.get("candidates", [])
+                if candidates:
+                    text = candidates[0]["content"]["parts"][0]["text"]
+                    return self._clean_and_parse_json(text)
+            else:
+                logger.warning(f"Gemini API returned status {res.status_code}")
         except Exception as e:
             logger.error(f"Error calling Gemini API: {e}")
         return None
@@ -121,14 +137,14 @@ class LLMService:
             "temperature": 0.1
         }
         try:
-            async with httpx.AsyncClient(timeout=settings.HTTP_TIMEOUT_SECONDS) as client:
-                res = await client.post(url, json=payload, headers=headers)
-                if res.status_code == 200:
-                    data = res.json()
-                    content = data["choices"][0]["message"]["content"]
-                    return self._clean_and_parse_json(content)
-                else:
-                    logger.warning(f"OpenAI API returned status {res.status_code}: {res.text}")
+            client = self._get_client()
+            res = await client.post(url, json=payload, headers=headers)
+            if res.status_code == 200:
+                data = res.json()
+                content = data["choices"][0]["message"]["content"]
+                return self._clean_and_parse_json(content)
+            else:
+                logger.warning(f"OpenAI API returned status {res.status_code}")
         except Exception as e:
             logger.error(f"Error calling OpenAI API: {e}")
         return None
@@ -150,12 +166,12 @@ class LLMService:
             "temperature": 0.1
         }
         try:
-            async with httpx.AsyncClient(timeout=settings.HTTP_TIMEOUT_SECONDS) as client:
-                res = await client.post(url, json=payload, headers=headers)
-                if res.status_code == 200:
-                    data = res.json()
-                    content = data["choices"][0]["message"]["content"]
-                    return self._clean_and_parse_json(content)
+            client = self._get_client()
+            res = await client.post(url, json=payload, headers=headers)
+            if res.status_code == 200:
+                data = res.json()
+                content = data["choices"][0]["message"]["content"]
+                return self._clean_and_parse_json(content)
         except Exception as e:
             logger.error(f"Error calling Groq API: {e}")
         return None
@@ -176,12 +192,12 @@ class LLMService:
             "temperature": 0.1
         }
         try:
-            async with httpx.AsyncClient(timeout=settings.HTTP_TIMEOUT_SECONDS) as client:
-                res = await client.post(url, json=payload, headers=headers)
-                if res.status_code == 200:
-                    data = res.json()
-                    content = data["content"][0]["text"]
-                    return self._clean_and_parse_json(content)
+            client = self._get_client()
+            res = await client.post(url, json=payload, headers=headers)
+            if res.status_code == 200:
+                data = res.json()
+                content = data["content"][0]["text"]
+                return self._clean_and_parse_json(content)
         except Exception as e:
             logger.error(f"Error calling Anthropic API: {e}")
         return None
@@ -191,7 +207,6 @@ class LLMService:
         if not text:
             return None
         clean = text.strip()
-        # Remove markdown fences if present
         if clean.startswith("```json"):
             clean = clean[7:]
         elif clean.startswith("```"):
@@ -202,14 +217,16 @@ class LLMService:
 
         try:
             return json.loads(clean)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as jde:
+            logger.debug(f"Direct JSON parse failed ({jde}), attempting regex fallback")
             # Try to match the first '{' and last '}'
             match = re.search(r"\{.*\}", clean, re.DOTALL)
             if match:
                 try:
                     return json.loads(match.group(0))
-                except Exception:
-                    pass
+                except json.JSONDecodeError as nested_err:
+                    logger.debug(f"Regex extracted block decode failed: {nested_err}")
+
             logger.warning(f"Failed to parse LLM JSON response: {text[:200]}")
             return None
 

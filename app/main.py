@@ -1,13 +1,17 @@
 import logging
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
+from starlette.middleware.base import BaseHTTPMiddleware
 import uvicorn
 
 from app.config import settings
 from app.schemas import ProspectDiscoveryRequest, ProspectDiscoveryResponse
 from app.services.prospect_service import prospect_service
+from app.services.llm_service import llm_service
+from app.services.search_service import search_service
 
 # Logging setup
 logging.basicConfig(
@@ -15,6 +19,19 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger("prospect_discovery_api")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup actions
+    logger.info("Application starting up...")
+    yield
+    # Graceful shutdown: close pooled HTTP clients
+    logger.info("Closing HTTP client connections...")
+    await llm_service.close()
+    await search_service.close()
+    logger.info("Application shutdown complete.")
+
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -25,15 +42,32 @@ app = FastAPI(
     Supported platforms: Google, LinkedIn, X, YouTube, Instagram, WhatsApp, Facebook, Email, Threads.
     """,
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    lifespan=lifespan
 )
 
-# Enable CORS for external frontend or web clients
+
+# Security Headers Middleware
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        return response
+
+
+app.add_middleware(SecurityHeadersMiddleware)
+
+# Secure CORS configuration
+# Note: allow_credentials MUST be False when allow_origins contains '*' for OWASP/W3C compliance
+is_wildcard = "*" in settings.ALLOWED_ORIGINS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_credentials=not is_wildcard,
+    allow_methods=["GET", "POST", "HEAD", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -68,8 +102,7 @@ async def general_exception_handler(request: Request, exc: Exception):
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
             "success": False,
-            "error": "An internal error occurred during prospect discovery.",
-            "details": str(exc) if settings.DEBUG else None
+            "error": "An internal error occurred during prospect discovery."
         }
     )
 
@@ -138,7 +171,7 @@ async def discover_prospects(request: ProspectDiscoveryRequest):
             content={
                 "success": False,
                 "query": request.query,
-                "error": f"Prospect discovery process encountered an error: {str(e)}"
+                "error": "Prospect discovery service encountered an internal processing error."
             }
         )
 

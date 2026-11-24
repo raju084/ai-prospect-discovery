@@ -1,5 +1,5 @@
+from typing import Optional, List
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import Optional
 
 
 class Settings(BaseSettings):
@@ -12,9 +12,13 @@ class Settings(BaseSettings):
     APP_NAME: str = "AI-Powered Multi-Platform Prospect Discovery API"
     APP_VERSION: str = "1.0.0"
     APP_ENV: str = "development"
+    # Default to localhost for local dev; Docker / Render set APP_HOST=0.0.0.0 via env
+    APP_HOST: str = "127.0.0.1"
     APP_PORT: int = 4000
-    APP_HOST: str = "0.0.0.0"
-    DEBUG: bool = True
+    DEBUG: bool = False
+
+    # CORS configuration
+    ALLOWED_ORIGINS: List[str] = ["*"]
 
     # LLM Settings
     # Supported: "gemini", "openai", "anthropic", "groq", "mock"

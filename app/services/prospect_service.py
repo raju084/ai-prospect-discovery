@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import List, Dict
+from typing import List
 from app.schemas import (
     ProspectDiscoveryRequest,
     ProspectDiscoveryResponse,
